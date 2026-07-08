@@ -171,6 +171,9 @@
     <a href="/resize/">Resize</a>
     <a href="/compress/">Compress</a>
     <a href="/convert/">Convert</a>
+    <a href="/crop/">Crop</a>
+    <a href="/rotate/">Rotate</a>
+    <a href="/base64/">Base64</a>
   </nav>
 </div>
 
@@ -215,9 +218,9 @@ const tools = [
   { name: 'Resize', icon: '&#8646;', desc: 'Change dimensions with aspect-ratio lock, presets, and live preview.', href: '/resize/', live: true },
   { name: 'Compress', icon: '&#9874;', desc: 'Reduce file size with quality control, batch processing, and format switching.', href: '/compress/', live: true },
   { name: 'Convert', icon: '&#8617;', desc: 'Convert between PNG, JPEG, and WebP with live preview.', href: '/convert/', live: true },
-  { name: 'Crop', icon: '&#9634;', desc: 'Select and crop a region of your image.', live: false },
-  { name: 'Rotate / Flip', icon: '&#8635;', desc: 'Rotate by 90&deg; increments or flip horizontally/vertically.', live: false },
-  { name: 'Image to Base64', icon: '&#9000;', desc: 'Encode any image as a data URI string.', live: false },
+  { name: 'Crop', icon: '&#9634;', desc: 'Select and crop a region of your image.', href: '/crop/', live: true },
+  { name: 'Rotate / Flip', icon: '&#8635;', desc: 'Rotate by 90&deg; increments or flip horizontally/vertically.', href: '/rotate/', live: true },
+  { name: 'Image to Base64', icon: '&#9000;', desc: 'Encode any image as a data URI string.', href: '/base64/', live: true },
   { name: 'Images to PDF', icon: '&#128196;', desc: 'Combine multiple images into a single PDF document.', live: false },
   { name: 'PDF to Images', icon: '&#128193;', desc: 'Extract pages from a PDF as separate images.', live: false },
   { name: 'PDF Merge / Split', icon: '&#128203;', desc: 'Merge multiple PDFs or split one into chapters.', live: false },
@@ -266,6 +269,9 @@ function handleHeroFiles(files) {
     <a href="/resize/" class="btn btn-primary">Resize</a>
     <a href="/compress/" class="btn btn-primary">Compress</a>
     <a href="/convert/" class="btn btn-primary">Convert</a>
+    <a href="/crop/" class="btn btn-primary">Crop</a>
+    <a href="/rotate/" class="btn btn-primary">Rotate</a>
+    <a href="/base64/" class="btn btn-primary">Base64</a>
   `;
   r.classList.add('visible');
 }

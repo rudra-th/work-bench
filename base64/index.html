@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base64 — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/">Convert</a>
+    <a href="/crop/">Crop</a>
+    <a href="/rotate/">Rotate</a>
+    <a href="/base64/" class="active">Base64</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Image &harr; Base64</h1>
+  <p>Encode an image as a base64 data-URI string, or decode a base64 string back into an image file.</p>
+</div>
+
+<div class="layout-single">
+
+  <div class="tab-toggle" id="modeTabs">
+    <button class="tab-btn active" data-mode="encode">Image to Base64</button>
+    <button class="tab-btn" data-mode="decode">Base64 to Image</button>
+  </div>
+
+  <div id="encodePanel" class="panel">
+    <div class="dropzone" id="encodeDropzone">
+      <div class="drop-icon">&#128228;</div>
+      <div class="drop-text">Drop an image here</div>
+      <div class="drop-sub">or click to browse</div>
+      <input type="file" accept="image/*">
+    </div>
+    <div id="encodeResult" style="display:none;">
+      <div class="control-group">
+        <label>Base64 Data URI</label>
+        <textarea class="textarea-mono" id="encodeOutput" readonly rows="6"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-small" id="copyBtn">Copy to Clipboard</button>
+      </div>
+      <div class="readout" id="encodeReadout">
+        <div class="readout-item">
+          <div class="readout-label">Binary Size</div>
+          <div class="readout-value original-size" id="binarySize">--</div>
+        </div>
+        <div class="readout-item">
+          <div class="readout-label">Base64 Length</div>
+          <div class="readout-value accent" id="b64Length">--</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="decodePanel" class="panel" style="display:none;">
+    <div class="control-group">
+      <label>Paste base64 string</label>
+      <textarea class="textarea-mono" id="decodeInput" rows="6" placeholder="Paste a base64 data-URI or raw base64 string here..."></textarea>
+    </div>
+    <div id="decodeResult" style="display:none;">
+      <img class="base64-preview" id="decodePreview" src="" alt="Decoded preview">
+      <div class="readout" id="decodeReadout">
+        <div class="readout-item">
+          <div class="readout-label">Dimensions</div>
+          <div class="readout-value" id="decodeDims">--</div>
+        </div>
+        <div class="readout-item">
+          <div class="readout-label">Format</div>
+          <div class="readout-value accent" id="decodeFormat">--</div>
+        </div>
+      </div>
+      <button class="btn btn-download" id="decodeDownloadBtn">Download as Image</button>
+    </div>
+    <div id="decodeError" style="display:none;color:var(--accent);font-size:0.875rem;">Invalid base64 image data. Check the string and try again.</div>
+  </div>
+
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  let encodeFile = null;
+  let encodeDataURL = null;
+  let decodeDataURL = null;
+  let decodeMime = 'image/png';
+  let decodeFileName = 'decoded';
+
+  function detectMimeFromB64(b64) {
+    if (/^\/9j/.test(b64)) return 'image/jpeg';
+    if (/^iVBOR/.test(b64)) return 'image/png';
+    if (/^R0lGOD/.test(b64)) return 'image/gif';
+    if (/^UklGR/.test(b64)) return 'image/webp';
+    return 'image/png';
+  }
+
+  function dataURLToBlob(dataURL) {
+    const comma = dataURL.indexOf(',');
+    const mime = dataURL.slice(5, comma).split(';')[0];
+    const b64 = dataURL.slice(comma + 1);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
+  function getExtFromMime(mime) {
+    const map = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/bmp': '.bmp' };
+    return map[mime] || '.png';
+  }
+
+  function handleEncodeFile(files) {
+    const f = files[0];
+    if (!f || !f.type.startsWith('image/')) return;
+    encodeFile = f;
+    const reader = new FileReader();
+    reader.onload = () => {
+      encodeDataURL = reader.result;
+      document.getElementById('encodeOutput').value = encodeDataURL;
+      document.getElementById('encodeResult').style.display = 'block';
+      document.getElementById('binarySize').textContent = formatBytes(f.size);
+      document.getElementById('b64Length').textContent = encodeDataURL.length.toLocaleString() + ' chars';
+      encodeDropzone.style.display = 'none';
+    };
+    reader.readAsDataURL(f);
+  }
+
+  function handleDecodeInput() {
+    const input = document.getElementById('decodeInput').value.trim();
+    const errorEl = document.getElementById('decodeError');
+    const resultEl = document.getElementById('decodeResult');
+    if (!input) {
+      resultEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      return;
+    }
+
+    let dataURL;
+    if (input.startsWith('data:')) {
+      dataURL = input;
+    } else {
+      const mime = detectMimeFromB64(input);
+      dataURL = 'data:' + mime + ';base64,' + input;
+    }
+
+    const comma = dataURL.indexOf(',');
+    const header = dataURL.slice(0, comma);
+    const rawMime = header.replace('data:', '').split(';')[0];
+    decodeMime = rawMime || 'image/png';
+
+    const img = new Image();
+    img.onload = () => {
+      decodeDataURL = dataURL;
+      document.getElementById('decodePreview').src = dataURL;
+      document.getElementById('decodeDims').textContent = img.naturalWidth + ' \u00d7 ' + img.naturalHeight + ' px';
+      document.getElementById('decodeFormat').textContent = decodeMime.split('/')[1].toUpperCase();
+      resultEl.style.display = 'flex';
+      resultEl.style.flexDirection = 'column';
+      errorEl.style.display = 'none';
+    };
+    img.onerror = () => {
+      resultEl.style.display = 'none';
+      errorEl.style.display = 'block';
+    };
+    img.src = dataURL;
+  }
+
+  document.getElementById('modeTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.mode;
+    document.getElementById('encodePanel').style.display = mode === 'encode' ? 'flex' : 'none';
+    document.getElementById('decodePanel').style.display = mode === 'decode' ? 'flex' : 'none';
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    const ta = document.getElementById('encodeOutput');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).catch(() => {});
+  });
+
+  let decodeDebounce = null;
+  document.getElementById('decodeInput').addEventListener('input', () => {
+    if (decodeDebounce) clearTimeout(decodeDebounce);
+    decodeDebounce = setTimeout(handleDecodeInput, 300);
+  });
+
+  document.getElementById('decodeDownloadBtn').addEventListener('click', () => {
+    if (!decodeDataURL) return;
+    const blob = dataURLToBlob(decodeDataURL);
+    const ext = getExtFromMime(decodeMime);
+    downloadBlob(blob, decodeFileName + ext);
+  });
+
+  const encodeDropzone = document.getElementById('encodeDropzone');
+  initDropzone(encodeDropzone, handleEncodeFile);
+})();
+</script>
+</body>
+</html>

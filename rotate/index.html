@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rotate / Flip — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/">Convert</a>
+    <a href="/crop/">Crop</a>
+    <a href="/rotate/" class="active">Rotate</a>
+    <a href="/base64/">Base64</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Rotate / Flip</h1>
+  <p>Rotate by 90&deg; increments or flip the canvas. Actions stack — rotate twice for a 180&deg; turn.</p>
+</div>
+
+<div id="dropSection">
+  <div class="dropzone" id="rotateDropzone" style="max-width:600px;margin:0 auto 24px;">
+    <div class="drop-icon">&#128228;</div>
+    <div class="drop-text">Drop an image here</div>
+    <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+    <input type="file" accept="image/*">
+  </div>
+</div>
+
+<div class="workbench" id="workbench" style="display:none;">
+  <div class="preview-panel">
+    <canvas id="previewCanvas"></canvas>
+  </div>
+  <div class="control-panel">
+    <div class="control-group">
+      <label>Transform</label>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="rotateL">&larr; 90&deg;</button>
+        <button class="btn btn-secondary" id="rotateR">90&deg; &rarr;</button>
+        <button class="btn btn-secondary" id="flipH">&#8596; H</button>
+        <button class="btn btn-secondary" id="flipV">&#8597; V</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <button class="btn btn-secondary" id="resetBtn" style="width:100%;">Reset</button>
+    </div>
+    <div class="readout">
+      <div class="readout-item">
+        <div class="readout-label">Original</div>
+        <div class="readout-value original-size" id="origDims">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Current</div>
+        <div class="readout-value" id="curDims">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Orientation</div>
+        <div class="readout-value accent" id="oriText">0&deg;</div>
+      </div>
+    </div>
+    <button class="btn btn-download" id="downloadBtn">Download</button>
+  </div>
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  let img = null;
+  let file = null;
+  let rotation = 0;
+  let flipH = false;
+  let flipV = false;
+
+  const canvas = document.getElementById('previewCanvas');
+  const origDims = document.getElementById('origDims');
+  const curDims = document.getElementById('curDims');
+  const oriText = document.getElementById('oriText');
+
+  function render() {
+    if (!img) return;
+    const angle = rotation * Math.PI / 180;
+    const sin = Math.abs(Math.sin(angle));
+    const cos = Math.abs(Math.cos(angle));
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    const cw = Math.round(iw * cos + ih * sin);
+    const ch = Math.round(iw * sin + ih * cos);
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(cw / 2, ch / 2);
+    ctx.rotate(angle);
+    ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+    ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+    curDims.textContent = cw + ' \u00d7 ' + ch + ' px';
+    const ori = [];
+    if (rotation > 0) ori.push(rotation + '\u00b0');
+    if (flipH) ori.push('H');
+    if (flipV) ori.push('V');
+    oriText.innerHTML = ori.length ? ori.join(' / ') : '0\u00b0';
+  }
+
+  function loadFile(f) {
+    file = f;
+    rotation = 0;
+    flipH = false;
+    flipV = false;
+    loadImage(f).then(loaded => {
+      img = loaded;
+      origDims.textContent = loaded.naturalWidth + ' \u00d7 ' + loaded.naturalHeight + ' px';
+      render();
+      document.getElementById('workbench').style.display = 'grid';
+      document.getElementById('dropSection').style.display = 'none';
+    });
+  }
+
+  document.getElementById('rotateL').addEventListener('click', () => {
+    rotation = (rotation - 90 + 360) % 360;
+    render();
+  });
+
+  document.getElementById('rotateR').addEventListener('click', () => {
+    rotation = (rotation + 90) % 360;
+    render();
+  });
+
+  document.getElementById('flipH').addEventListener('click', () => {
+    flipH = !flipH;
+    render();
+  });
+
+  document.getElementById('flipV').addEventListener('click', () => {
+    flipV = !flipV;
+    render();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    rotation = 0;
+    flipH = false;
+    flipV = false;
+    render();
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    if (!img || !file) return;
+    const { base, ext } = splitFilename(file.name);
+    const mime = getMimeFromExt(ext);
+    canvasToBlob(canvas, mime).then(blob => {
+      downloadBlob(blob, base + '_transformed' + ext);
+    });
+  });
+
+  const dz = document.getElementById('rotateDropzone');
+  initDropzone(dz, (files) => { if (files.length) loadFile(files[0]); });
+})();
+</script>
+</body>
+</html>

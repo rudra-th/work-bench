@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crop — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+<style>
+.crop-readout { grid-template-columns: 1fr 1fr 1fr; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/">Convert</a>
+    <a href="/crop/" class="active">Crop</a>
+    <a href="/rotate/">Rotate</a>
+    <a href="/base64/">Base64</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Crop</h1>
+  <p>Select a region of your image and export just that area. Drag the selection box or resize from its handles.</p>
+</div>
+
+<div id="dropSection">
+  <div class="dropzone" id="cropDropzone" style="max-width:600px;margin:0 auto 24px;">
+    <div class="drop-icon">&#128228;</div>
+    <div class="drop-text">Drop an image here</div>
+    <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+    <input type="file" accept="image/*">
+  </div>
+</div>
+
+<div class="workbench" id="workbench" style="display:none;">
+  <div class="preview-panel">
+    <div class="crop-stage" id="cropStage">
+      <img id="cropImage" src="" alt="">
+      <div class="crop-overlay" id="cropOverlay">
+        <div class="crop-box" id="cropBox">
+          <div class="crop-handle crop-handle-nw"></div>
+          <div class="crop-handle crop-handle-n"></div>
+          <div class="crop-handle crop-handle-ne"></div>
+          <div class="crop-handle crop-handle-e"></div>
+          <div class="crop-handle crop-handle-se"></div>
+          <div class="crop-handle crop-handle-s"></div>
+          <div class="crop-handle crop-handle-sw"></div>
+          <div class="crop-handle crop-handle-w"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-panel">
+    <div class="control-group">
+      <label>Aspect Ratio</label>
+      <div class="btn-row" id="arPresets">
+        <button class="btn btn-secondary btn-small active" data-ar="">Free</button>
+        <button class="btn btn-secondary btn-small" data-ar="1">1:1</button>
+        <button class="btn btn-secondary btn-small" data-ar="1.333">4:3</button>
+        <button class="btn btn-secondary btn-small" data-ar="1.778">16:9</button>
+        <button class="btn btn-secondary btn-small" data-ar="0.5625">9:16</button>
+      </div>
+    </div>
+    <div class="readout crop-readout">
+      <div class="readout-item">
+        <div class="readout-label">Width</div>
+        <div class="readout-value" id="cropW">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Height</div>
+        <div class="readout-value" id="cropH">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Aspect</div>
+        <div class="readout-value accent" id="cropAr">--</div>
+      </div>
+    </div>
+    <button class="btn btn-download" id="downloadBtn">Download Cropped</button>
+  </div>
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  const MIN_SEL = 20;
+
+  const cropImage = document.getElementById('cropImage');
+  const cropStage = document.getElementById('cropStage');
+  const cropOverlay = document.getElementById('cropOverlay');
+  const cropBox = document.getElementById('cropBox');
+  const cropW = document.getElementById('cropW');
+  const cropH = document.getElementById('cropH');
+  const cropAr = document.getElementById('cropAr');
+
+  let img = null;
+  let file = null;
+  let displayW = 0;
+  let displayH = 0;
+  let sel = { x: 0, y: 0, w: 0, h: 0 };
+  let aspectRatio = null;
+  let dragging = false;
+  let dragType = null;
+  let dragStart = { x: 0, y: 0 };
+  let dragSel = { x: 0, y: 0, w: 0, h: 0 };
+  let resizeInfo = null;
+
+  const RESIZE_MAP = {
+    se: { fixX: true, fixY: true, scaleX: 1, scaleY: 1 },
+    e:  { fixX: true, fixY: false, scaleX: 1, scaleY: 0 },
+    ne: { fixX: true, fixY: false, scaleX: 1, scaleY: -1 },
+    n:  { fixX: false, fixY: false, scaleX: 0, scaleY: -1 },
+    nw: { fixX: false, fixY: false, scaleX: -1, scaleY: -1 },
+    w:  { fixX: false, fixY: false, scaleX: -1, scaleY: 0 },
+    sw: { fixX: false, fixY: true, scaleX: -1, scaleY: 1 },
+    s:  { fixX: false, fixY: true, scaleX: 0, scaleY: 1 },
+  };
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function alignOverlay() {
+    const cw = cropImage.clientWidth;
+    const ch = cropImage.clientHeight;
+    displayW = cw;
+    displayH = ch;
+    cropStage.style.width = cw + 'px';
+    cropStage.style.height = ch + 'px';
+  }
+
+  function updateCropBox() {
+    cropBox.style.left = sel.x + 'px';
+    cropBox.style.top = sel.y + 'px';
+    cropBox.style.width = sel.w + 'px';
+    cropBox.style.height = sel.h + 'px';
+    const ratio = sel.w / sel.h;
+    cropW.textContent = sel.w + ' px';
+    cropH.textContent = sel.h + ' px';
+    cropAr.textContent = sel.w + ':' + sel.h;
+  }
+
+  function applyAR(w, h, ar, primary) {
+    if (!ar) return { w, h };
+    if (primary === 'w') {
+      const nh = Math.round(w / ar);
+      return { w, h: clamp(nh, MIN_SEL, displayH) };
+    }
+    const nw = Math.round(h * ar);
+    return { w: clamp(nw, MIN_SEL, displayW), h };
+  }
+
+  function startDrag(e, type, info) {
+    e.preventDefault();
+    const pt = getPoint(e);
+    dragging = true;
+    dragType = type;
+    dragStart = pt;
+    dragSel = { ...sel };
+    resizeInfo = info || null;
+    if (type === 'move') cropBox.classList.add('dragging');
+  }
+
+  function doDrag(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const pt = getPoint(e);
+    const dx = pt.x - dragStart.x;
+    const dy = pt.y - dragStart.y;
+
+    if (dragType === 'move') {
+      sel.x = clamp(dragSel.x + dx, 0, displayW - sel.w);
+      sel.y = clamp(dragSel.y + dy, 0, displayH - sel.h);
+      updateCropBox();
+      return;
+    }
+
+    const info = resizeInfo;
+    let newX, newY, newW, newH;
+
+    if (info.fixX) {
+      newX = dragSel.x;
+      newW = Math.max(MIN_SEL, dragSel.w + info.scaleX * dx);
+    } else {
+      newX = clamp(dragSel.x + dx, 0, displayW - MIN_SEL);
+      newW = Math.max(MIN_SEL, dragSel.w - (newX - dragSel.x));
+      if (newX + newW > displayW) newW = displayW - newX;
+    }
+
+    if (info.fixY) {
+      newY = dragSel.y;
+      newH = Math.max(MIN_SEL, dragSel.h + info.scaleY * dy);
+    } else {
+      newY = clamp(dragSel.y + dy, 0, displayH - MIN_SEL);
+      newH = Math.max(MIN_SEL, dragSel.h - (newY - dragSel.y));
+      if (newY + newH > displayH) newH = displayH - newY;
+    }
+
+    if (aspectRatio) {
+      const primary = Math.abs(dx) >= Math.abs(dy) ? 'w' : 'h';
+      const arV = aspectRatio;
+      if (primary === 'w') {
+        let nh = Math.round(newW / arV);
+        if (nh < MIN_SEL) { nh = MIN_SEL; newW = Math.round(nh * arV); }
+        if (nh > displayH) { nh = displayH; newW = Math.round(nh * arV); }
+        newH = nh;
+        if (!info.fixY) newY = dragSel.y + dragSel.h - newH;
+      } else {
+        let nw = Math.round(newH * arV);
+        if (nw < MIN_SEL) { nw = MIN_SEL; newH = Math.round(nw / arV); }
+        if (nw > displayW) { nw = displayW; newH = Math.round(nw / arV); }
+        newW = nw;
+        if (!info.fixX) newX = dragSel.x + dragSel.w - newW;
+      }
+    }
+
+    sel.x = clamp(newX, 0, displayW - MIN_SEL);
+    sel.y = clamp(newY, 0, displayH - MIN_SEL);
+    sel.w = clamp(newW, MIN_SEL, displayW - sel.x);
+    sel.h = clamp(newH, MIN_SEL, displayH - sel.y);
+    if (sel.x + sel.w > displayW) sel.w = displayW - sel.x;
+    if (sel.y + sel.h > displayH) sel.h = displayH - sel.y;
+
+    updateCropBox();
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    dragType = null;
+    resizeInfo = null;
+    cropBox.classList.remove('dragging');
+  }
+
+  function getPoint(e) {
+    if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function initSelection() {
+    alignOverlay();
+    const pad = 0;
+    sel = { x: pad, y: pad, w: displayW - pad * 2, h: displayH - pad * 2 };
+    updateCropBox();
+  }
+
+  cropBox.addEventListener('mousedown', (e) => {
+    if (e.target !== cropBox) return;
+    startDrag(e, 'move', null);
+  });
+
+  cropBox.addEventListener('touchstart', (e) => {
+    if (e.target !== cropBox) return;
+    startDrag(e, 'move', null);
+  }, { passive: false });
+
+  document.querySelectorAll('.crop-handle').forEach(h => {
+    const cls = Array.from(h.classList).find(c => c.startsWith('crop-handle-'));
+    if (!cls) return;
+    const pos = cls.replace('crop-handle-', '');
+    const info = RESIZE_MAP[pos];
+    if (!info) return;
+
+    h.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      startDrag(e, 'resize', info);
+    });
+
+    h.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      startDrag(e, 'resize', info);
+    }, { passive: false });
+  });
+
+  document.addEventListener('mousemove', doDrag);
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchmove', doDrag, { passive: false });
+  document.addEventListener('touchend', endDrag);
+
+  window.addEventListener('resize', () => {
+    if (img) {
+      alignOverlay();
+      sel = { x: 0, y: 0, w: displayW, h: displayH };
+      updateCropBox();
+    }
+  });
+
+  document.querySelectorAll('#arPresets .btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#arPresets .btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = btn.dataset.ar;
+      aspectRatio = val ? parseFloat(val) : null;
+      if (aspectRatio) {
+        const primary = displayW >= displayH ? 'w' : 'h';
+        const { w, h } = applyAR(sel.w, sel.h, aspectRatio, primary);
+        sel.w = w;
+        sel.h = h;
+        updateCropBox();
+      }
+    });
+  });
+
+  function loadFile(f) {
+    file = f;
+    loadImage(f).then(loaded => {
+      img = loaded;
+      cropImage.onload = () => {
+        initSelection();
+        document.getElementById('workbench').style.display = 'grid';
+        document.getElementById('dropSection').style.display = 'none';
+      };
+      cropImage.src = loaded.src;
+    });
+  }
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    if (!img || !file) return;
+    const scaleX = img.naturalWidth / displayW;
+    const scaleY = img.naturalHeight / displayH;
+    const sx = Math.round(sel.x * scaleX);
+    const sy = Math.round(sel.y * scaleY);
+    const sw = Math.round(sel.w * scaleX);
+    const sh = Math.round(sel.h * scaleY);
+    if (sw < 1 || sh < 1) return;
+    const c = document.createElement('canvas');
+    c.width = sw;
+    c.height = sh;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const { base, ext } = splitFilename(file.name);
+    const mime = getMimeFromExt(ext);
+    canvasToBlob(c, mime).then(blob => downloadBlob(blob, base + '_cropped' + ext));
+  });
+
+  const dz = document.getElementById('cropDropzone');
+  initDropzone(dz, (files) => { if (files.length) loadFile(files[0]); });
+})();
+</script>
+</body>
+</html>
