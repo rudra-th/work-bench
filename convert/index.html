@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convert — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+<style>
+.convert-readout { grid-template-columns: repeat(4, 1fr); }
+.convert-readout .readout-item:last-child { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/" class="active">Convert</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Convert</h1>
+  <p>Switch between PNG, JPEG, and WebP formats with live preview. Quality controls for lossy formats.</p>
+</div>
+
+<div id="dropSection">
+  <div class="dropzone" id="convertDropzone" style="max-width:600px;margin:0 auto 24px;">
+    <div class="drop-icon">&#128228;</div>
+    <div class="drop-text">Drop an image here</div>
+    <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+    <input type="file" accept="image/*">
+  </div>
+</div>
+
+<div class="workbench" id="workbench" style="display:none;">
+  <div class="preview-panel">
+    <canvas id="previewCanvas"></canvas>
+  </div>
+  <div class="control-panel">
+    <div class="control-group">
+      <label for="formatSelect">Output Format</label>
+      <select id="formatSelect">
+        <option value="png">PNG</option>
+        <option value="jpeg">JPEG</option>
+        <option value="webp">WebP</option>
+      </select>
+    </div>
+    <div class="control-group" id="qualityGroup">
+      <div class="range-header">
+        <label for="qualitySlider">Quality</label>
+        <span class="range-value" id="qualityDisplay">92</span>
+      </div>
+      <input type="range" id="qualitySlider" min="1" max="100" value="92">
+    </div>
+    <div class="readout convert-readout" id="readout">
+      <div class="readout-item">
+        <div class="readout-label">Original Format</div>
+        <div class="readout-value original-size" id="origFormat">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Original Size</div>
+        <div class="readout-value original-size" id="origSize">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">New Format</div>
+        <div class="readout-value accent" id="newFormat">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">New Size</div>
+        <div class="readout-value" id="newSize">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Dimensions</div>
+        <div class="readout-value" id="dims">--</div>
+      </div>
+    </div>
+    <button class="btn btn-download" id="downloadBtn">Download</button>
+  </div>
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  let currentFile = null;
+  let currentImg = null;
+
+  const dz = document.getElementById('convertDropzone');
+  const workbench = document.getElementById('workbench');
+  const dropSection = document.getElementById('dropSection');
+  const canvas = document.getElementById('previewCanvas');
+  const formatSelect = document.getElementById('formatSelect');
+  const qualitySlider = document.getElementById('qualitySlider');
+  const qualityDisplay = document.getElementById('qualityDisplay');
+  const qualityGroup = document.getElementById('qualityGroup');
+  const origFormat = document.getElementById('origFormat');
+  const origSize = document.getElementById('origSize');
+  const newFormat = document.getElementById('newFormat');
+  const newSize = document.getElementById('newSize');
+  const dims = document.getElementById('dims');
+  const downloadBtn = document.getElementById('downloadBtn');
+  let debounceTimer = null;
+
+  function getFormat() {
+    return formatSelect.value;
+  }
+
+  function getMime() {
+    const f = getFormat();
+    if (f === 'png') return 'image/png';
+    if (f === 'jpeg') return 'image/jpeg';
+    if (f === 'webp') return 'image/webp';
+    return 'image/png';
+  }
+
+  function getQuality() {
+    return parseInt(qualitySlider.value) / 100;
+  }
+
+  function getExt() {
+    return getExtFromFormat(getFormat());
+  }
+
+  function updatePreview() {
+    if (!currentImg || !currentFile) return;
+    const mime = getMime();
+    const q = getFormat() === 'png' ? undefined : getQuality();
+    const c = drawToCanvas(currentImg, currentImg.naturalWidth, currentImg.naturalHeight);
+    canvas.width = currentImg.naturalWidth;
+    canvas.height = currentImg.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(c, 0, 0);
+    canvasToBlob(c, mime, q).then(blob => {
+      newSize.textContent = formatBytes(blob.size);
+    });
+  }
+
+  function schedulePreview() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(updatePreview, 150);
+  }
+
+  function loadFile(file) {
+    currentFile = file;
+    loadImage(file).then(img => {
+      currentImg = img;
+      const { ext } = splitFilename(file.name);
+      origFormat.textContent = ext.toUpperCase().replace('.', '') || 'UNKNOWN';
+      origSize.textContent = formatBytes(file.size);
+      newFormat.textContent = getFormat().toUpperCase();
+      dims.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      workbench.style.display = 'grid';
+      dropSection.style.display = 'none';
+      updatePreview();
+    });
+  }
+
+  function updateQualityVisibility() {
+    const showQuality = getFormat() !== 'png';
+    qualityGroup.style.display = showQuality ? 'flex' : 'none';
+  }
+  updateQualityVisibility();
+
+  formatSelect.addEventListener('change', () => {
+    newFormat.textContent = getFormat().toUpperCase();
+    updateQualityVisibility();
+    if (currentFile && currentImg) updatePreview();
+  });
+
+  qualitySlider.addEventListener('input', () => {
+    qualityDisplay.textContent = parseInt(qualitySlider.value);
+    schedulePreview();
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    if (!currentImg || !currentFile) return;
+    const mime = getMime();
+    const q = getFormat() === 'png' ? undefined : getQuality();
+    const c = drawToCanvas(currentImg, currentImg.naturalWidth, currentImg.naturalHeight);
+    const { base } = splitFilename(currentFile.name);
+    canvasToBlob(c, mime, q).then(blob => downloadBlob(blob, base + getExt()));
+  });
+
+  initDropzone(dz, (files) => {
+    if (files.length) loadFile(files[0]);
+  });
+})();
+</script>
+</body>
+</html>

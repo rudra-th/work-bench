@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workbench — file tools for your browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+<style>
+.hero {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+  text-align: center;
+}
+.hero h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2.75rem;
+  margin-bottom: 12px;
+  line-height: 1.15;
+}
+.hero .sub {
+  color: var(--text-dim);
+  font-size: 1.0625rem;
+  max-width: 520px;
+  margin: 0 auto 32px;
+}
+.hero .hero-dropzone {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.hero .hero-result {
+  display: none;
+  margin-top: 24px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  padding: 20px;
+  text-align: left;
+}
+.hero .hero-result.visible { display: block; }
+.hero .hero-result .hero-preview-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hero .hero-result .hero-preview-row img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.hero .hero-result .hero-preview-row .hero-info {
+  flex: 1;
+  min-width: 180px;
+}
+.hero .hero-result .hero-filename {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin-bottom: 4px;
+}
+.hero .hero-result .hero-size {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+.hero .hero-result .hero-size strong {
+  color: var(--success);
+  font-weight: 700;
+}
+.hero .hero-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tools-section {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 24px 60px;
+}
+.tools-section h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  margin-bottom: 24px;
+  text-align: center;
+}
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.tool-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  transition: border-color var(--transition), transform var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tool-card.live {
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--text);
+}
+.tool-card.live:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.tool-card.disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+.tool-card .tool-icon {
+  font-size: 1.75rem;
+  margin-bottom: 4px;
+}
+.tool-card .tool-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+}
+.tool-card .tool-desc {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+  flex: 1;
+}
+.tool-card .tool-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.philosophy {
+  text-align: center;
+  padding: 40px 24px;
+  color: var(--text-dim);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .tool-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .tool-grid { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 2rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/">Convert</a>
+  </nav>
+</div>
+
+<section class="hero">
+  <h1>Your files. Your browser.<br>No detours.</h1>
+  <p class="sub">Drop an image below to see what Workbench can do. Everything runs locally — zero uploads, zero servers.</p>
+  <div class="hero-dropzone">
+    <div class="dropzone" id="heroDropzone">
+      <div class="drop-icon">&#128228;</div>
+      <div class="drop-text">Drop an image here</div>
+      <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+      <input type="file" accept="image/*" multiple>
+    </div>
+    <div class="hero-result" id="heroResult">
+      <div class="hero-preview-row">
+        <img id="heroPreview" src="" alt="Preview">
+        <div class="hero-info">
+          <div class="hero-filename" id="heroFilename"></div>
+          <div class="hero-size" id="heroSize"></div>
+        </div>
+      </div>
+      <div class="hero-actions" id="heroActions"></div>
+    </div>
+  </div>
+</section>
+
+<section class="tools-section">
+  <h2>All tools</h2>
+  <div class="tool-grid" id="toolGrid"></div>
+</section>
+
+<div class="philosophy">No account, no upload, no server round-trip. Your file never leaves your device.</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+const tools = [
+  { name: 'Resize', icon: '&#8646;', desc: 'Change dimensions with aspect-ratio lock, presets, and live preview.', href: '/resize/', live: true },
+  { name: 'Compress', icon: '&#9874;', desc: 'Reduce file size with quality control, batch processing, and format switching.', href: '/compress/', live: true },
+  { name: 'Convert', icon: '&#8617;', desc: 'Convert between PNG, JPEG, and WebP with live preview.', href: '/convert/', live: true },
+  { name: 'Crop', icon: '&#9634;', desc: 'Select and crop a region of your image.', live: false },
+  { name: 'Rotate / Flip', icon: '&#8635;', desc: 'Rotate by 90&deg; increments or flip horizontally/vertically.', live: false },
+  { name: 'Image to Base64', icon: '&#9000;', desc: 'Encode any image as a data URI string.', live: false },
+  { name: 'Images to PDF', icon: '&#128196;', desc: 'Combine multiple images into a single PDF document.', live: false },
+  { name: 'PDF to Images', icon: '&#128193;', desc: 'Extract pages from a PDF as separate images.', live: false },
+  { name: 'PDF Merge / Split', icon: '&#128203;', desc: 'Merge multiple PDFs or split one into chapters.', live: false },
+  { name: 'QR Code Generator', icon: '&#128247;', desc: 'Generate QR codes from text, URLs, or contact data.', live: false },
+  { name: 'Watermark', icon: '&#127912;', desc: 'Add text or image watermarks to your photos.', live: false },
+  { name: 'Image Collage', icon: '&#128248;', desc: 'Arrange multiple images into a grid or freeform collage.', live: false },
+  { name: 'MP4 to MP3', icon: '&#127925;', desc: 'Extract audio track from a video file.', live: false },
+  { name: 'Video Compress', icon: '&#127916;', desc: 'Reduce video file size while preserving quality.', live: false },
+  { name: 'GIF Maker', icon: '&#127918;', desc: 'Create animated GIFs from video clips or image sequences.', live: false },
+  { name: 'Background Remover', icon: '&#129504;', desc: 'Remove image backgrounds automatically.', live: false },
+];
+
+const grid = document.getElementById('toolGrid');
+tools.forEach(t => {
+  const card = document.createElement('a');
+  card.className = 'tool-card' + (t.live ? ' live' : ' disabled');
+  if (t.live) card.href = t.href;
+  card.innerHTML = `
+    <div class="tool-icon">${t.icon}</div>
+    <div class="tool-name">${t.name}</div>
+    <div class="tool-desc">${t.desc}</div>
+    <div class="tool-meta">${t.live ? '' : '<span class="coming-soon-badge">coming soon</span>'}</div>
+  `;
+  grid.appendChild(card);
+});
+
+// Hero dropzone
+let heroFile = null;
+
+function handleHeroFiles(files) {
+  const file = files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  heroFile = file;
+  const r = document.getElementById('heroResult');
+  document.getElementById('heroFilename').textContent = file.name;
+  const img = document.getElementById('heroPreview');
+  const url = URL.createObjectURL(file);
+  img.src = url;
+  img.onload = () => {
+    const size = formatBytes(file.size);
+    document.getElementById('heroSize').innerHTML = '<strong>' + size + '</strong> &middot; all local, zero upload';
+    URL.revokeObjectURL(url);
+  };
+  const actions = document.getElementById('heroActions');
+  actions.innerHTML = `
+    <a href="/resize/" class="btn btn-primary">Resize</a>
+    <a href="/compress/" class="btn btn-primary">Compress</a>
+    <a href="/convert/" class="btn btn-primary">Convert</a>
+  `;
+  r.classList.add('visible');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const dz = document.getElementById('heroDropzone');
+  initDropzone(dz, handleHeroFiles);
+});
+</script>
+</body>
+</html>

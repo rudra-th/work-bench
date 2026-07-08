@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compress — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+<style>
+.compress-readout .readout-item:first-child { grid-column: 1 / -1; }
+.compress-readout { grid-template-columns: 1fr 1fr; }
+.compress-readout .savings-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.compress-readout .savings-number {
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--success);
+}
+.compress-readout .savings-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/">Resize</a>
+    <a href="/compress/" class="active">Compress</a>
+    <a href="/convert/">Convert</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Compress</h1>
+  <p>Reduce image file size with quality control. Supports batch processing — upload multiple files at once.</p>
+</div>
+
+<div id="dropSection">
+  <div class="dropzone" id="compressDropzone" style="max-width:600px;margin:0 auto 24px;">
+    <div class="drop-icon">&#128228;</div>
+    <div class="drop-text">Drop images here</div>
+    <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+    <input type="file" accept="image/*" multiple>
+  </div>
+</div>
+
+<div class="workbench" id="workbench" style="display:none;">
+  <div class="preview-panel">
+    <canvas id="previewCanvas"></canvas>
+  </div>
+  <div class="control-panel">
+    <div class="control-group">
+      <div class="range-header">
+        <label for="qualitySlider">Quality</label>
+        <span class="range-value" id="qualityDisplay">82</span>
+      </div>
+      <input type="range" id="qualitySlider" min="1" max="100" value="82">
+    </div>
+    <div class="control-group">
+      <label for="formatSelect">Output Format</label>
+      <select id="formatSelect">
+        <option value="original">Keep original</option>
+        <option value="jpeg">Force JPEG</option>
+        <option value="webp">Force WebP</option>
+      </select>
+    </div>
+    <div class="readout compress-readout" id="readout">
+      <div class="readout-item">
+        <div class="readout-label">Original Size</div>
+        <div class="readout-value original-size" id="origSize">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Compressed Size</div>
+        <div class="readout-value accent" id="compressedSize">--</div>
+      </div>
+      <div class="savings-row">
+        <span class="savings-label">You saved</span>
+        <span class="savings-number" id="savingsPct">--</span>
+      </div>
+    </div>
+    <button class="btn btn-download" id="downloadBtn">Download</button>
+    <div class="batch-list" id="batchList"></div>
+    <div id="batchActions" style="display:none;">
+      <button class="btn btn-secondary" id="downloadAllBtn" style="width:100%;">Download All</button>
+    </div>
+  </div>
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  let currentFile = null;
+  let currentImg = null;
+  let currentBlob = null;
+  let currentThumbUrl = null;
+  let batchItems = [];
+  let debounceTimer = null;
+
+  const dz = document.getElementById('compressDropzone');
+  const workbench = document.getElementById('workbench');
+  const dropSection = document.getElementById('dropSection');
+  const canvas = document.getElementById('previewCanvas');
+  const qualitySlider = document.getElementById('qualitySlider');
+  const qualityDisplay = document.getElementById('qualityDisplay');
+  const formatSelect = document.getElementById('formatSelect');
+  const origSize = document.getElementById('origSize');
+  const compressedSize = document.getElementById('compressedSize');
+  const savingsPct = document.getElementById('savingsPct');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const batchList = document.getElementById('batchList');
+
+  function getMime(file) {
+    const fmt = formatSelect.value;
+    if (fmt === 'jpeg') return 'image/jpeg';
+    if (fmt === 'webp') return 'image/webp';
+    const { ext } = splitFilename(file.name);
+    return getMimeFromExt(ext);
+  }
+
+  function getQuality() {
+    return parseInt(qualitySlider.value) / 100;
+  }
+
+  function getDisplayQuality() {
+    return parseInt(qualitySlider.value);
+  }
+
+  function getExtForDownload(file, mime) {
+    if (formatSelect.value === 'jpeg') return '.jpg';
+    if (formatSelect.value === 'webp') return '.webp';
+    const { ext } = splitFilename(file.name);
+    return ext || '.png';
+  }
+
+  function updatePreview() {
+    if (!currentImg || !currentFile) return;
+    const mime = getMime(currentFile);
+    const q = getQuality();
+    const c = drawToCanvas(currentImg, currentImg.naturalWidth, currentImg.naturalHeight);
+    canvas.width = currentImg.naturalWidth;
+    canvas.height = currentImg.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(c, 0, 0);
+    canvasToBlob(c, mime, q).then(blob => {
+      currentBlob = blob;
+      const orig = currentFile.size;
+      const comp = blob.size;
+      compressedSize.textContent = formatBytes(comp);
+      const saved = orig - comp;
+      const pct = orig > 0 ? ((saved / orig) * 100) : 0;
+      savingsPct.textContent = pct >= 0 ? '-' + pct.toFixed(1) + '%' : '0.0%';
+      renderBatchList();
+    });
+  }
+
+  function schedulePreview() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(updatePreview, 150);
+  }
+
+  function loadFile(file) {
+    if (currentThumbUrl) URL.revokeObjectURL(currentThumbUrl);
+    currentFile = file;
+    currentThumbUrl = URL.createObjectURL(file);
+    loadImage(file).then(img => {
+      currentImg = img;
+      origSize.textContent = formatBytes(file.size);
+      qualityDisplay.textContent = getDisplayQuality();
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      workbench.style.display = 'grid';
+      dropSection.style.display = 'none';
+      updatePreview();
+    });
+  }
+
+  function addBatchItem(file) {
+    const existing = batchItems.find(i => i.file === file);
+    if (existing) return;
+    const thumbUrl = URL.createObjectURL(file);
+    const item = { file, blob: null, thumbUrl };
+    batchItems.push(item);
+    renderBatchList();
+    processBatchItem(item);
+  }
+
+  function processBatchItem(item) {
+    loadImage(item.file).then(img => {
+      const mime = getMime(item.file);
+      const q = getQuality();
+      const c = drawToCanvas(img, img.naturalWidth, img.naturalHeight);
+      canvasToBlob(c, mime, q).then(blob => {
+        item.blob = blob;
+        renderBatchList();
+      });
+    });
+  }
+
+  function renderBatchList() {
+    const allItems = [{ file: currentFile, blob: currentBlob, thumbUrl: currentThumbUrl }, ...batchItems].filter(i => i.file);
+    const hasMultiple = allItems.length > 1;
+    if (!hasMultiple) { batchList.innerHTML = ''; document.getElementById('batchActions').style.display = 'none'; return; }
+    document.getElementById('batchActions').style.display = hasMultiple ? 'block' : 'none';
+    let html = '';
+    allItems.forEach((item, i) => {
+      const f = item.file;
+      const newExt = getExtForDownload(f, getMime(f));
+      html += '<div class="batch-item">';
+      html += '<img class="batch-thumb" src="' + item.thumbUrl + '">';
+      html += '<div class="batch-info">';
+      html += '<div class="batch-name">' + f.name + '</div>';
+      html += '<div class="batch-size">' + formatBytes(f.size) + ' &rarr; ' + (item.blob ? formatBytes(item.blob.size) : '...') + '</div>';
+      html += '</div>';
+      if (item.blob) {
+        html += '<button class="batch-dl" data-index="' + i + '">DL</button>';
+      }
+      html += '</div>';
+    });
+    batchList.innerHTML = html;
+    batchList.querySelectorAll('.batch-dl').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.index);
+        const item = allItems[idx];
+        if (item && item.blob) {
+          const { base } = splitFilename(item.file.name);
+          const newExt = getExtForDownload(item.file, getMime(item.file));
+          downloadBlob(item.blob, base + '_compressed' + newExt);
+        }
+      });
+    });
+  }
+
+  document.getElementById('downloadAllBtn').addEventListener('click', () => {
+    const allItems = [{ file: currentFile, blob: currentBlob }, ...batchItems].filter(i => i.file && i.blob);
+    allItems.forEach(item => {
+      const { base } = splitFilename(item.file.name);
+      const newExt = getExtForDownload(item.file, getMime(item.file));
+      downloadBlob(item.blob, base + '_compressed' + newExt);
+    });
+  });
+
+  function handleFiles(files) {
+    const images = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (!images.length) return;
+    loadFile(images[0]);
+    images.slice(1).forEach(f => addBatchItem(f));
+  }
+
+  qualitySlider.addEventListener('input', () => {
+    qualityDisplay.textContent = getDisplayQuality();
+    schedulePreview();
+  });
+
+  formatSelect.addEventListener('change', () => {
+    if (currentFile) {
+      updatePreview();
+      batchItems.forEach(item => processBatchItem(item));
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    if (!currentImg || !currentFile) return;
+    const mime = getMime(currentFile);
+    const q = getQuality();
+    const c = drawToCanvas(currentImg, currentImg.naturalWidth, currentImg.naturalHeight);
+    const { base } = splitFilename(currentFile.name);
+    const newExt = getExtForDownload(currentFile, mime);
+    canvasToBlob(c, mime, q).then(blob => downloadBlob(blob, base + '_compressed' + newExt));
+  });
+
+  initDropzone(dz, handleFiles);
+})();
+</script>
+</body>
+</html>

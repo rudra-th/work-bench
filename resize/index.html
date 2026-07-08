@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resize — Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
+  <nav class="nav-links">
+    <a href="/resize/" class="active">Resize</a>
+    <a href="/compress/">Compress</a>
+    <a href="/convert/">Convert</a>
+  </nav>
+</div>
+
+<div class="page-header">
+  <h1>Resize</h1>
+  <p>Scale your image to exact dimensions. Adjusts file size automatically — download retains the original format.</p>
+</div>
+
+<div id="dropSection">
+  <div class="dropzone" id="resizeDropzone" style="max-width:600px;margin:0 auto 24px;">
+    <div class="drop-icon">&#128228;</div>
+    <div class="drop-text">Drop an image here</div>
+    <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
+    <input type="file" accept="image/*">
+  </div>
+</div>
+
+<div class="workbench" id="workbench" style="display:none;">
+  <div class="preview-panel">
+    <canvas id="previewCanvas"></canvas>
+  </div>
+  <div class="control-panel">
+    <div class="control-group">
+      <label for="presetSelect">Quick Preset</label>
+      <select id="presetSelect">
+        <option value="">Custom</option>
+        <option value="1920x1080">1920 &times; 1080 (Full HD)</option>
+        <option value="1280x720">1280 &times; 720 (HD)</option>
+        <option value="1080x1080">1080 &times; 1080 (Square)</option>
+        <option value="1080x1350">1080 &times; 1350 (Portrait)</option>
+        <option value="512x512">512 &times; 512 (Icon)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="widthInput">Width (px)</label>
+      <input type="number" id="widthInput" min="1" max="10000" value="800">
+    </div>
+    <div class="control-group">
+      <label for="heightInput">Height (px)</label>
+      <input type="number" id="heightInput" min="1" max="10000" value="600">
+    </div>
+    <div class="control-group checkbox-group">
+      <input type="checkbox" id="lockAspect" checked>
+      <label for="lockAspect">Lock aspect ratio</label>
+    </div>
+    <div class="readout">
+      <div class="readout-item">
+        <div class="readout-label">Original</div>
+        <div class="readout-value original-size" id="origDims">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">Output</div>
+        <div class="readout-value" id="outDims">--</div>
+      </div>
+      <div class="readout-item">
+        <div class="readout-label">File Size</div>
+        <div class="readout-value accent" id="outSize">--</div>
+      </div>
+    </div>
+    <button class="btn btn-download" id="downloadBtn">Download</button>
+  </div>
+</div>
+
+<footer class="privacy-note">
+  <span class="privacy-dot"></span>
+  Nothing you drop here ever touches a server. All processing happens locally in this tab.
+</footer>
+
+<script src="/shared/app.js"></script>
+<script>
+(function() {
+  let originalFile = null;
+  let originalImg = null;
+  let aspectRatio = 1;
+
+  const dz = document.getElementById('resizeDropzone');
+  const workbench = document.getElementById('workbench');
+  const dropSection = document.getElementById('dropSection');
+  const canvas = document.getElementById('previewCanvas');
+  const widthInput = document.getElementById('widthInput');
+  const heightInput = document.getElementById('heightInput');
+  const lockCheck = document.getElementById('lockAspect');
+  const presetSelect = document.getElementById('presetSelect');
+  const origDims = document.getElementById('origDims');
+  const outDims = document.getElementById('outDims');
+  const outSize = document.getElementById('outSize');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  let updating = false;
+
+  function updatePreview() {
+    if (!originalImg || updating) return;
+    const w = parseInt(widthInput.value) || 1;
+    const h = parseInt(heightInput.value) || 1;
+    const c = drawToCanvas(originalImg, w, h);
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(c, 0, 0);
+    outDims.textContent = w + ' × ' + h + ' px';
+    const { ext } = splitFilename(originalFile.name);
+    const mime = getMimeFromExt(ext);
+    const q = (mime === 'image/jpeg' || mime === 'image/webp') ? 0.92 : undefined;
+    canvasToBlob(c, mime, q).then(blob => {
+      outSize.textContent = formatBytes(blob.size);
+    });
+  }
+
+  function loadFile(file) {
+    originalFile = file;
+    loadImage(file).then(img => {
+      originalImg = img;
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      aspectRatio = w / h;
+      origDims.textContent = w + ' × ' + h + ' px';
+      widthInput.value = w;
+      heightInput.value = h;
+      workbench.style.display = 'grid';
+      dropSection.style.display = 'none';
+      updatePreview();
+    });
+  }
+
+  function onWidthChange() {
+    if (!lockCheck.checked || !originalImg || updating) { updatePreview(); return; }
+    const w = parseInt(widthInput.value) || 1;
+    const h = Math.round(w / aspectRatio);
+    updating = true;
+    heightInput.value = h;
+    updating = false;
+    updatePreview();
+  }
+
+  function onHeightChange() {
+    if (!lockCheck.checked || !originalImg || updating) { updatePreview(); return; }
+    const h = parseInt(heightInput.value) || 1;
+    const w = Math.round(h * aspectRatio);
+    updating = true;
+    widthInput.value = w;
+    updating = false;
+    updatePreview();
+  }
+
+  widthInput.addEventListener('input', onWidthChange);
+  heightInput.addEventListener('input', onHeightChange);
+
+  lockCheck.addEventListener('change', () => {
+    if (lockCheck.checked && originalImg) onWidthChange();
+  });
+
+  presetSelect.addEventListener('change', () => {
+    const val = presetSelect.value;
+    if (!val) return;
+    const [w, h] = val.split('x').map(Number);
+    if (lockCheck.checked) {
+      updating = true;
+      widthInput.value = w;
+      heightInput.value = h;
+      updating = false;
+    } else {
+      widthInput.value = w;
+      heightInput.value = h;
+    }
+    updatePreview();
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    if (!originalFile || !originalImg) return;
+    const w = parseInt(widthInput.value) || 1;
+    const h = parseInt(heightInput.value) || 1;
+    const c = drawToCanvas(originalImg, w, h);
+    const { base, ext } = splitFilename(originalFile.name);
+    const mime = getMimeFromExt(ext);
+    const q = (mime === 'image/jpeg' || mime === 'image/webp') ? 0.92 : undefined;
+    const fname = base + '-' + w + 'x' + h + ext;
+    canvasToBlob(c, mime, q).then(blob => downloadBlob(blob, fname));
+  });
+
+  initDropzone(dz, (files) => {
+    if (files.length) loadFile(files[0]);
+  });
+})();
+</script>
+</body>
+</html>
