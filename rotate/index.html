@@ -142,11 +142,13 @@
   document.getElementById('flipH').addEventListener('click', () => {
     flipH = !flipH;
     render();
+    document.getElementById('flipH').classList.toggle('active', flipH);
   });
 
   document.getElementById('flipV').addEventListener('click', () => {
     flipV = !flipV;
     render();
+    document.getElementById('flipV').classList.toggle('active', flipV);
   });
 
   document.getElementById('resetBtn').addEventListener('click', () => {

@@ -48,7 +48,8 @@
         <textarea class="textarea-mono" id="encodeOutput" readonly rows="6"></textarea>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary btn-small" id="copyBtn">Copy to Clipboard</button>
+        <button class="btn btn-primary btn-small" id="copyBtn">Copy Data-URI</button>
+        <button class="btn btn-secondary btn-small" id="copyRawBtn">Copy Raw Base64</button>
       </div>
       <div class="readout" id="encodeReadout">
         <div class="readout-item">
@@ -101,6 +102,18 @@
   let decodeMime = 'image/png';
   let decodeFileName = 'decoded';
 
+  function sanitizeB64Input(str) {
+    str = str.trim();
+    if (str.startsWith('data:')) {
+      const comma = str.indexOf(',');
+      if (comma === -1) return str;
+      const header = str.slice(0, comma).replace(/\s/g, '');
+      const data = str.slice(comma + 1).replace(/\s/g, '');
+      return header + ',' + data;
+    }
+    return str.replace(/\s/g, '');
+  }
+
   function detectMimeFromB64(b64) {
     if (/^\/9j/.test(b64)) return 'image/jpeg';
     if (/^iVBOR/.test(b64)) return 'image/png';
@@ -141,7 +154,8 @@
   }
 
   function handleDecodeInput() {
-    const input = document.getElementById('decodeInput').value.trim();
+    const raw = document.getElementById('decodeInput').value;
+    const input = sanitizeB64Input(raw);
     const errorEl = document.getElementById('decodeError');
     const resultEl = document.getElementById('decodeResult');
     if (!input) {
@@ -194,6 +208,13 @@
     const ta = document.getElementById('encodeOutput');
     ta.select();
     navigator.clipboard.writeText(ta.value).catch(() => {});
+  });
+
+  document.getElementById('copyRawBtn').addEventListener('click', () => {
+    const val = document.getElementById('encodeOutput').value;
+    const comma = val.indexOf(',');
+    const raw = comma !== -1 ? val.slice(comma + 1) : val;
+    navigator.clipboard.writeText(raw).catch(() => {});
   });
 
   let decodeDebounce = null;

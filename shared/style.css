@@ -375,6 +375,11 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { background: var(--border); }
+.btn-secondary.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
 
 .btn-download {
   background: var(--success);
@@ -529,6 +534,22 @@ img { max-width: 100%; display: block; }
 .crop-handle-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
 .crop-handle-w  { top: 50%; margin-top: -7px; left: -7px; cursor: ew-resize; }
 
+/* ===== CROP GRID ===== */
+.crop-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+}
+.crop-grid-line {
+  position: absolute;
+  background: rgba(255,255,255,0.55);
+}
+.crop-grid-line-v1 { left: 33.33%; top: 0; width: 1px; height: 100%; }
+.crop-grid-line-v2 { left: 66.66%; top: 0; width: 1px; height: 100%; }
+.crop-grid-line-h1 { top: 33.33%; left: 0; height: 1px; width: 100%; }
+.crop-grid-line-h2 { top: 66.66%; left: 0; height: 1px; width: 100%; }
+
 /* ===== TAB TOGGLE ===== */
 .tab-toggle {
   display: flex;
@@ -623,6 +644,15 @@ img { max-width: 100%; display: block; }
 .btn-small {
   font-size: 0.8125rem;
   padding: 8px 14px;
+}
+
+/* ===== RESPONSIVE NAV ===== */
+@media (max-width: 800px) {
+  .top-bar { flex-wrap: wrap; gap: 10px; justify-content: center; padding: 12px 16px; }
+  .top-bar .nav-links { flex-wrap: wrap; justify-content: center; gap: 10px; }
+}
+@media (max-width: 400px) {
+  .top-bar .nav-links a { font-size: 0.8125rem; }
 }
 
 /* ===== REDUCED MOTION ===== */

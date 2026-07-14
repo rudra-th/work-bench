@@ -46,6 +46,12 @@
       <img id="cropImage" src="" alt="">
       <div class="crop-overlay" id="cropOverlay">
         <div class="crop-box" id="cropBox">
+          <div class="crop-grid">
+            <div class="crop-grid-line crop-grid-line-v1"></div>
+            <div class="crop-grid-line crop-grid-line-v2"></div>
+            <div class="crop-grid-line crop-grid-line-h1"></div>
+            <div class="crop-grid-line crop-grid-line-h2"></div>
+          </div>
           <div class="crop-handle crop-handle-nw"></div>
           <div class="crop-handle crop-handle-n"></div>
           <div class="crop-handle crop-handle-ne"></div>
@@ -129,6 +135,7 @@
   };
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function gcd(a, b) { return b ? gcd(b, a % b) : a; }
 
   function alignOverlay() {
     const cw = cropImage.clientWidth;
@@ -144,10 +151,10 @@
     cropBox.style.top = sel.y + 'px';
     cropBox.style.width = sel.w + 'px';
     cropBox.style.height = sel.h + 'px';
-    const ratio = sel.w / sel.h;
     cropW.textContent = sel.w + ' px';
     cropH.textContent = sel.h + ' px';
-    cropAr.textContent = sel.w + ':' + sel.h;
+    const g = gcd(sel.w, sel.h);
+    cropAr.textContent = (sel.w / g) + ':' + (sel.h / g);
   }
 
   function applyAR(w, h, ar, primary) {
@@ -179,8 +186,8 @@
     const dy = pt.y - dragStart.y;
 
     if (dragType === 'move') {
-      sel.x = clamp(dragSel.x + dx, 0, displayW - sel.w);
-      sel.y = clamp(dragSel.y + dy, 0, displayH - sel.h);
+      sel.x = clamp(dragSel.x + dx, 0, displayW - dragSel.w);
+      sel.y = clamp(dragSel.y + dy, 0, displayH - dragSel.h);
       updateCropBox();
       return;
     }
