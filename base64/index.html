@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Base64 — Workbench</title>
+<meta name="description" content="Encode images as base64 data-URI strings or decode base64 strings back into image files.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -11,17 +12,21 @@
 </head>
 <body>
 
+<a href="#mainContent" class="skip-link">Skip to content</a>
+
 <div class="top-bar">
   <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
-  <nav class="nav-links">
+  <nav class="nav-links" aria-label="Tool navigation">
     <a href="/resize/">Resize</a>
     <a href="/compress/">Compress</a>
     <a href="/convert/">Convert</a>
     <a href="/crop/">Crop</a>
     <a href="/rotate/">Rotate</a>
-    <a href="/base64/" class="active">Base64</a>
+    <a href="/base64/" class="active" aria-current="page">Base64</a>
   </nav>
 </div>
+
+<main id="mainContent">
 
 <div class="page-header">
   <h1>Image &harr; Base64</h1>
@@ -40,7 +45,7 @@
       <div class="drop-icon">&#128228;</div>
       <div class="drop-text">Drop an image here</div>
       <div class="drop-sub">or click to browse</div>
-      <input type="file" accept="image/*">
+      <input type="file" accept="image/*" aria-label="Select an image to encode">
     </div>
     <div id="encodeResult" style="display:none;">
       <div class="control-group">
@@ -61,6 +66,7 @@
           <div class="readout-value accent" id="b64Length">--</div>
         </div>
       </div>
+      <button class="btn-startover" id="encodeStartOver">Start Over</button>
     </div>
   </div>
 
@@ -87,6 +93,8 @@
   </div>
 
 </div>
+
+</main>
 
 <footer class="privacy-note">
   <span class="privacy-dot"></span>
@@ -207,14 +215,31 @@
   document.getElementById('copyBtn').addEventListener('click', () => {
     const ta = document.getElementById('encodeOutput');
     ta.select();
-    navigator.clipboard.writeText(ta.value).catch(() => {});
+    navigator.clipboard.writeText(ta.value).then(() => {
+      const btn = document.getElementById('copyBtn');
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }).catch(() => {
+      document.getElementById('copyBtn').textContent = 'Copy failed';
+      setTimeout(() => { document.getElementById('copyBtn').textContent = 'Copy Data-URI'; }, 1500);
+    });
   });
 
   document.getElementById('copyRawBtn').addEventListener('click', () => {
     const val = document.getElementById('encodeOutput').value;
     const comma = val.indexOf(',');
     const raw = comma !== -1 ? val.slice(comma + 1) : val;
-    navigator.clipboard.writeText(raw).catch(() => {});
+    navigator.clipboard.writeText(raw).then(() => {
+      const btn = document.getElementById('copyRawBtn');
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }).catch(() => {
+      const btn = document.getElementById('copyRawBtn');
+      btn.textContent = 'Copy failed';
+      setTimeout(() => { btn.textContent = 'Copy Raw Base64'; }, 1500);
+    });
   });
 
   let decodeDebounce = null;
@@ -232,6 +257,27 @@
 
   const encodeDropzone = document.getElementById('encodeDropzone');
   initDropzone(encodeDropzone, handleEncodeFile);
+
+  document.getElementById('encodeStartOver').addEventListener('click', () => {
+    encodeFile = null;
+    encodeDataURL = null;
+    document.getElementById('encodeOutput').value = '';
+    document.getElementById('encodeResult').style.display = 'none';
+    encodeDropzone.style.display = '';
+    try { sessionStorage.removeItem('wb_file'); } catch(e) {}
+  });
+
+  try {
+    const saved = sessionStorage.getItem('wb_file');
+    if (saved) {
+      sessionStorage.removeItem('wb_file');
+      fetch(saved).then(r => r.blob()).then(blob => {
+        const ext = blob.type.split('/')[1] || 'png';
+        const f = new File([blob], 'pasted-image.' + ext, { type: blob.type });
+        handleEncodeFile([f]);
+      }).catch(() => {});
+    }
+  } catch(e) {}
 })();
 </script>
 </body>

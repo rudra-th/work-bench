@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Crop — Workbench</title>
+<meta name="description" content="Crop images with a draggable selection box, aspect ratio presets, and rule-of-thirds grid guides.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -14,36 +15,39 @@
 </head>
 <body>
 
+<a href="#mainContent" class="skip-link">Skip to content</a>
+
 <div class="top-bar">
   <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
-  <nav class="nav-links">
+  <nav class="nav-links" aria-label="Tool navigation">
     <a href="/resize/">Resize</a>
     <a href="/compress/">Compress</a>
     <a href="/convert/">Convert</a>
-    <a href="/crop/" class="active">Crop</a>
+    <a href="/crop/" class="active" aria-current="page">Crop</a>
     <a href="/rotate/">Rotate</a>
     <a href="/base64/">Base64</a>
   </nav>
 </div>
 
+<main id="mainContent">
 <div class="page-header">
   <h1>Crop</h1>
   <p>Select a region of your image and export just that area. Drag the selection box or resize from its handles.</p>
 </div>
 
 <div id="dropSection">
-  <div class="dropzone" id="cropDropzone" style="max-width:600px;margin:0 auto 24px;">
+  <div class="dropzone dropzone-centered" id="cropDropzone">
     <div class="drop-icon">&#128228;</div>
     <div class="drop-text">Drop an image here</div>
     <div class="drop-sub">or click to browse &middot; paste from clipboard</div>
-    <input type="file" accept="image/*">
+    <input type="file" accept="image/*" aria-label="Select an image to crop">
   </div>
 </div>
 
 <div class="workbench" id="workbench" style="display:none;">
   <div class="preview-panel">
     <div class="crop-stage" id="cropStage">
-      <img id="cropImage" src="" alt="">
+      <img id="cropImage" src="" alt="Image to crop">
       <div class="crop-overlay" id="cropOverlay">
         <div class="crop-box" id="cropBox">
           <div class="crop-grid">
@@ -66,13 +70,13 @@
   </div>
   <div class="control-panel">
     <div class="control-group">
-      <label>Aspect Ratio</label>
-      <div class="btn-row" id="arPresets">
-        <button class="btn btn-secondary btn-small active" data-ar="">Free</button>
-        <button class="btn btn-secondary btn-small" data-ar="1">1:1</button>
-        <button class="btn btn-secondary btn-small" data-ar="1.333">4:3</button>
-        <button class="btn btn-secondary btn-small" data-ar="1.778">16:9</button>
-        <button class="btn btn-secondary btn-small" data-ar="0.5625">9:16</button>
+      <label id="arLabel">Aspect Ratio</label>
+      <div class="btn-row" id="arPresets" role="radiogroup" aria-labelledby="arLabel">
+        <button class="btn btn-secondary btn-small active" data-ar="" role="radio" aria-checked="true">Free</button>
+        <button class="btn btn-secondary btn-small" data-ar="1" role="radio" aria-checked="false">1:1</button>
+        <button class="btn btn-secondary btn-small" data-ar="1.333" role="radio" aria-checked="false">4:3</button>
+        <button class="btn btn-secondary btn-small" data-ar="1.778" role="radio" aria-checked="false">16:9</button>
+        <button class="btn btn-secondary btn-small" data-ar="0.5625" role="radio" aria-checked="false">9:16</button>
       </div>
     </div>
     <div class="readout crop-readout">
@@ -90,8 +94,10 @@
       </div>
     </div>
     <button class="btn btn-download" id="downloadBtn">Download Cropped</button>
+    <button class="btn-startover" id="startOverBtn">Start Over</button>
   </div>
 </div>
+</main>
 
 <footer class="privacy-note">
   <span class="privacy-dot"></span>
@@ -296,16 +302,33 @@
 
   window.addEventListener('resize', () => {
     if (img) {
+      const oldW = displayW;
+      const oldH = displayH;
       alignOverlay();
-      sel = { x: 0, y: 0, w: displayW, h: displayH };
+      if (oldW > 0 && oldH > 0) {
+        sel.x = Math.round(sel.x * (displayW / oldW));
+        sel.y = Math.round(sel.y * (displayH / oldH));
+        sel.w = Math.round(sel.w * (displayW / oldW));
+        sel.h = Math.round(sel.h * (displayH / oldH));
+        sel.x = clamp(sel.x, 0, displayW - MIN_SEL);
+        sel.y = clamp(sel.y, 0, displayH - MIN_SEL);
+        sel.w = clamp(sel.w, MIN_SEL, displayW - sel.x);
+        sel.h = clamp(sel.h, MIN_SEL, displayH - sel.y);
+      } else {
+        sel = { x: 0, y: 0, w: displayW, h: displayH };
+      }
       updateCropBox();
     }
   });
 
   document.querySelectorAll('#arPresets .btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('#arPresets .btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#arPresets .btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-checked', 'false');
+      });
       btn.classList.add('active');
+      btn.setAttribute('aria-checked', 'true');
       const val = btn.dataset.ar;
       aspectRatio = val ? parseFloat(val) : null;
       if (aspectRatio) {
@@ -328,7 +351,7 @@
         document.getElementById('dropSection').style.display = 'none';
       };
       cropImage.src = loaded.src;
-    });
+    }).catch(() => {});
   }
 
   document.getElementById('downloadBtn').addEventListener('click', () => {
@@ -352,6 +375,26 @@
 
   const dz = document.getElementById('cropDropzone');
   initDropzone(dz, (files) => { if (files.length) loadFile(files[0]); });
+
+  document.getElementById('startOverBtn').addEventListener('click', () => {
+    img = null;
+    file = null;
+    document.getElementById('workbench').style.display = 'none';
+    document.getElementById('dropSection').style.display = '';
+    try { sessionStorage.removeItem('wb_file'); } catch(e) {}
+  });
+
+  try {
+    const saved = sessionStorage.getItem('wb_file');
+    if (saved) {
+      sessionStorage.removeItem('wb_file');
+      fetch(saved).then(r => r.blob()).then(blob => {
+        const ext = blob.type.split('/')[1] || 'png';
+        const f = new File([blob], 'pasted-image.' + ext, { type: blob.type });
+        loadFile(f);
+      }).catch(() => {});
+    }
+  } catch(e) {}
 })();
 </script>
 </body>

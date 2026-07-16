@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Workbench — file tools for your browser</title>
+<meta name="description" content="Browser-based image processing tools. Resize, compress, convert, crop, rotate, and encode images — all client-side, zero uploads.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -165,9 +166,11 @@
 </head>
 <body>
 
+<a href="#mainContent" class="skip-link">Skip to content</a>
+
 <div class="top-bar">
   <a href="/" class="logo"><span class="logo-dot"></span>Workbench</a>
-  <nav class="nav-links">
+  <nav class="nav-links" aria-label="Tool navigation">
     <a href="/resize/">Resize</a>
     <a href="/compress/">Compress</a>
     <a href="/convert/">Convert</a>
@@ -177,6 +180,7 @@
   </nav>
 </div>
 
+<main id="mainContent">
 <section class="hero">
   <h1>Your files. Your browser.<br>No detours.</h1>
   <p class="sub">Drop an image below to see what Workbench can do. Everything runs locally — zero uploads, zero servers.</p>
@@ -204,8 +208,7 @@
   <h2>All tools</h2>
   <div class="tool-grid" id="toolGrid"></div>
 </section>
-
-<div class="philosophy">No account, no upload, no server round-trip. Your file never leaves your device.</div>
+</main>
 
 <footer class="privacy-note">
   <span class="privacy-dot"></span>
@@ -238,41 +241,68 @@ tools.forEach(t => {
   const card = document.createElement('a');
   card.className = 'tool-card' + (t.live ? ' live' : ' disabled');
   if (t.live) card.href = t.href;
-  card.innerHTML = `
-    <div class="tool-icon">${t.icon}</div>
-    <div class="tool-name">${t.name}</div>
-    <div class="tool-desc">${t.desc}</div>
-    <div class="tool-meta">${t.live ? '' : '<span class="coming-soon-badge">coming soon</span>'}</div>
-  `;
+
+  const icon = document.createElement('div');
+  icon.className = 'tool-icon';
+  icon.textContent = t.icon.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n)).replace(/&deg;/g, '\u00b0');
+  card.appendChild(icon);
+
+  const name = document.createElement('div');
+  name.className = 'tool-name';
+  name.textContent = t.name;
+  card.appendChild(name);
+
+  const desc = document.createElement('div');
+  desc.className = 'tool-desc';
+  desc.textContent = t.desc.replace(/&deg;/g, '\u00b0');
+  card.appendChild(desc);
+
+  const meta = document.createElement('div');
+  meta.className = 'tool-meta';
+  if (!t.live) {
+    const badge = document.createElement('span');
+    badge.className = 'coming-soon-badge';
+    badge.textContent = 'coming soon';
+    meta.appendChild(badge);
+  }
+  card.appendChild(meta);
+
   grid.appendChild(card);
 });
 
 // Hero dropzone
-let heroFile = null;
 
 function handleHeroFiles(files) {
   const file = files[0];
   if (!file || !file.type.startsWith('image/')) return;
-  heroFile = file;
   const r = document.getElementById('heroResult');
   document.getElementById('heroFilename').textContent = file.name;
   const img = document.getElementById('heroPreview');
   const url = URL.createObjectURL(file);
   img.src = url;
   img.onload = () => {
-    const size = formatBytes(file.size);
-    document.getElementById('heroSize').innerHTML = '<strong>' + size + '</strong> &middot; all local, zero upload';
+    const sizeEl = document.getElementById('heroSize');
+    const strong = document.createElement('strong');
+    strong.textContent = formatBytes(file.size);
+    sizeEl.appendChild(strong);
+    sizeEl.appendChild(document.createTextNode(' \u00b7 all local, zero upload'));
     URL.revokeObjectURL(url);
   };
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { sessionStorage.setItem('wb_file', reader.result); } catch(e) {}
+  };
+  reader.readAsDataURL(file);
   const actions = document.getElementById('heroActions');
-  actions.innerHTML = `
-    <a href="/resize/" class="btn btn-primary">Resize</a>
-    <a href="/compress/" class="btn btn-primary">Compress</a>
-    <a href="/convert/" class="btn btn-primary">Convert</a>
-    <a href="/crop/" class="btn btn-primary">Crop</a>
-    <a href="/rotate/" class="btn btn-primary">Rotate</a>
-    <a href="/base64/" class="btn btn-primary">Base64</a>
-  `;
+  const toolNames = ['Resize', 'Compress', 'Convert', 'Crop', 'Rotate', 'Base64'];
+  const toolPaths = ['/resize/', '/compress/', '/convert/', '/crop/', '/rotate/', '/base64/'];
+  toolNames.forEach((name, i) => {
+    const a = document.createElement('a');
+    a.href = toolPaths[i];
+    a.className = 'btn btn-primary';
+    a.textContent = name;
+    actions.appendChild(a);
+  });
   r.classList.add('visible');
 }
 

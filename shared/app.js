@@ -1,6 +1,7 @@
 /* ===== Shared Utilities ===== */
 
 function formatBytes(bytes) {
+  if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) return '0 B';
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
@@ -36,8 +37,14 @@ function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to load image'));
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
     img.src = url;
   });
 }
@@ -52,20 +59,31 @@ function drawToCanvas(img, width, height) {
 }
 
 function canvasToBlob(canvas, mimeType, quality) {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas toBlob returned null'));
+      }, mimeType, quality);
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
 function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Download failed:', e);
+  }
 }
 
 function initDropzone(el, onFile) {
@@ -81,7 +99,10 @@ function initDropzone(el, onFile) {
 
   el.addEventListener('dragover', (e) => {
     e.preventDefault();
-    el.classList.add('drag-over');
+    const types = e.dataTransfer?.types || [];
+    if (types.includes('Files') || types.includes('text/plain')) {
+      el.classList.add('drag-over');
+    }
   });
 
   el.addEventListener('dragleave', () => {
